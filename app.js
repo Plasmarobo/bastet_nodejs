@@ -34,7 +34,7 @@ var alexaResponse = {
 };
 
 var moodMap = [
-  "sex",
+  "sexy",
   "light",
   "rain",
   "random",
