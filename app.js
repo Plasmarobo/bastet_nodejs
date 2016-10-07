@@ -70,8 +70,8 @@ var brightnessLevelMap = [
  "dim",
  "normal",
  "on",
- "light",
  "bright",
+ "high",
  "maximum",
 ];
 
@@ -120,6 +120,8 @@ function intentBrightnessLevelHandler(brightness) {
 
 function intentBrightnessChangeHandler(change) {
    var index = brightnessLevelMap.findIndex(function(elem, index, arr) { return elem === clientStatus["brightness"] });
+   if (index == -1)
+     return false;
    if (brightnessChangeMapDown.includes(change)) {
      index -= 1;
   } else if (brightnessChangeMapUp.includes(change)) {
@@ -156,20 +158,21 @@ function handleResponse(req,res) {
           if (setMood) {
             changeAlexaResponse(alexaResponse, "Bastet has updated the mood to " + jsonObj.request.intent.slots.mood.value);
           } else {
-            changeAlexaResponse(alexaResponse, "Bastet has not granted your request.");
+            changeAlexaResponse(alexaResponse, "Failed to set mood.");
           }
           break;
         case "Lights":
           
           if (intentBrightnessLevelHandler(jsonObj.request.intent.slots.brightness.value)) {
-            changeAlexaResponse(alexaResponse, "Bastet has updated the lights");
+            changeAlexaResponse(alexaResponse, "Updated to " + jsonObj.request.intent.slots.brightness.value);
           } else if (intentBrightnessChangeHandler(jsonObj.request.intent.slots.change.value)) {
-            changeAlexaResponse(alexaResponse, "Bastet has updated the lights");
+            changeAlexaResponse(alexaResponse, "Updated brightness to " + clientStatus["brightness"]);
           } else {
-            changeAlexaResponse(alexaResponse, "Bastet could not update the lights");
+            changeAlexaResponse(alexaResponse, "Failed to set brightness.");
           }
           break;
         default:
+          changeAlexaResponse(alexaResponse, "Bastet does not know that trick");
           break;
         }
       }
