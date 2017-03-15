@@ -119,7 +119,7 @@ function intentBrightnessLevelHandler(brightness) {
 };
 
 function intentBrightnessChangeHandler(change) {
-   var index = brightnessLevelMap.findIndex(function(elem, index, arr) { return elem === clientStatus["brightness"] });
+   var index = brightnessLevelMap.findIndex(function(elem, index, arr) { return elem === change; });
    if (index == -1)
      return false;
    if (brightnessChangeMapDown.includes(change)) {
