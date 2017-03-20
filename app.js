@@ -1,5 +1,5 @@
 var https = require('https');
-var websocket = require('nodejs-websocket');
+var http = require('http');
 var fs = require('fs');
 
 var options = {
@@ -20,7 +20,7 @@ var alexaResponse = {
     "card": {
       "type": "Simple",
       "title": "Bastet",
-      "content": "Bastet will grant your wish."
+      "content": "Lighting Updated."
     },
     "reprompt": {
       "outputSpeech": {
@@ -91,18 +91,19 @@ var brightnessChangeMapUp = [
 
 
 var clientStatus = { 
-  "brightness" : "light",
-  "mood" : "light",
+  "brightness" : 0,
+  "mood" : 1,
+  "updated_at" : Date.now(),
 };
 
 
 function intentMoodHandler(mood) {
   if (moodMap.includes(mood)) {
     console.log("Setting mood to " + mood);
-    sendMoodInfo(mood);
+    sendMoodInfo(moodMap.indexOf(mood));
     return true;
   } else {
-    console.log("Could not set mood " + mood);
+    console.log("Unknown " + mood);
     return false;
   }
 };
@@ -110,10 +111,13 @@ function intentMoodHandler(mood) {
 function intentBrightnessLevelHandler(brightness) {
   if (brightnessLevelMap.includes(brightness)) {
     console.log("Setting brightness to " + brightness);
-    sendBrightnessInfo(brightness);
+    sendBrightnessInfo(brightnessLevelMap.indexOf(brightness));
+    return true;
+  } else if (intentBrightnessChangeHandler(brightness)) {
+    console.log("Setting brightness " + brightness);
     return true;
   } else {
-    console.log("Could not set brightness " + brightness);
+    console.log("Unknown brightness " + brightness);
     return false;  
   }
 };
@@ -128,7 +132,8 @@ function intentBrightnessChangeHandler(change) {
     index += 1;
   }
   if (index >= 0 && index < brightnessLevelMap.length) {
-    clientStatus["brightness"] = brightnessLevelMap[index];
+    clientStatus["brightness"] = index;
+    clientStatus["updated_at"] = Date.now();
     sendBrightnessInfo(clientStatus["brightness"]);
     return true;
   }
@@ -149,67 +154,67 @@ function handleResponse(req,res) {
     });
 
     req.on('end', function () {
-      var jsonObj = JSON.parse(body);
-      if (jsonObj.request.type == "IntentRequest") {
-        console.log("Got IntentRequest");
-        switch(jsonObj.request.intent.name) {
-        case "SetMood":
-          var setMood = intentMoodHandler(jsonObj.request.intent.slots.mood.value);
-          if (setMood) {
-            changeAlexaResponse(alexaResponse, "Bastet has updated the mood to " + jsonObj.request.intent.slots.mood.value);
-          } else {
-            changeAlexaResponse(alexaResponse, "Failed to set mood.");
+      var jsonObj = null;
+      try { 
+        jsonObj = JSON.parse(body);
+        if (jsonObj.request.type == "IntentRequest") {
+          console.log("Got IntentRequest");
+          switch(jsonObj.request.intent.name) {
+          case "SetMood":
+            var setMood = intentMoodHandler(jsonObj.request.intent.slots.mood.value);
+            if (setMood) {
+              changeAlexaResponse(alexaResponse, "Bastet has updated the mood to " + moodMap[clientStatus["mood"]]);
+            } else {
+              changeAlexaResponse(alexaResponse, "Bastet did not understand what mood you wanted.");
+            }
+            break;
+          case "Lights":
+            var setBrightness = intentBrightnessLevelHandler(jsonObj.request.intent.slots.brightness.value);
+            if (setBrightness) {
+              changeAlexaResponse(alexaResponse, brightnessLevelMap[clientStatus["brightness"]]);
+            } else {
+              changeAlexaResponse(alexaResponse, "Bastet did not understand that brightness level.");
+            }
+            break;
+          default:
+            changeAlexaResponse(alexaResponse, "Bastet did not understand your request");
+            break;
           }
-          break;
-        case "Lights":
-          
-          if (intentBrightnessLevelHandler(jsonObj.request.intent.slots.brightness.value)) {
-            changeAlexaResponse(alexaResponse, "Updated to " + jsonObj.request.intent.slots.brightness.value);
-          } else if (intentBrightnessChangeHandler(jsonObj.request.intent.slots.change.value)) {
-            changeAlexaResponse(alexaResponse, "Updated brightness to " + clientStatus["brightness"]);
-          } else {
-            changeAlexaResponse(alexaResponse, "Failed to set brightness.");
-          }
-          break;
-        default:
-          changeAlexaResponse(alexaResponse, "Bastet does not know that trick");
-          break;
+          res.writeHead(200);
+          res.end(JSON.stringify(alexaResponse));
+          return;
+        } else if (jsonObj.request.type == "StateSync") {
+          console.log("Client Sync:\n");
+          //clientStatus["mood"] = jsonObj.mood;
+          //clientStatus["brightness"] = jsonObj.brightness;
+          clientStatus["updated_at"] = Date.now();
+          console.log(JSON.stringify(clientStatus) + "\n");
+          res.writeHead(200);
+          res.end(JSON.stringify(clientStatus));
+          return;
+        } else {
+          res.writeHead(400);
+          res.end("{error:\"bad request\"}");
         }
+      } catch(e) {
+        console.log(e);
+        res.writeHead(400);
+        res.end("{error:\"malformed json\"}");
       }
-      res.writeHead(200);
-      res.end(JSON.stringify(alexaResponse));
     });
   }
 };
 
 var server = https.createServer(options, handleResponse).listen(443);
+var server2 = http.createServer(handleResponse).listen(80);
 
 function sendMoodInfo(mood) {
   clientStatus["mood"] = mood;
+  clientStatus["updated_at"] = Date.now();
 };
 
 function sendBrightnessInfo(brightness) {
   clientStatus["brightness"] = brightness;
+  clientStatus["updated_at"] = Date.now();
 };
-
-var socket_server = websocket.createServer(function (conn) {
-  conn.on("error", (err) => console.log("Caught Error\n" + err.stack));
-  conn.on("text", function (str) {
-    console.log("Client Request: " + str );
-    var jsonObj = JSON.parse(str);
-    switch(jsonObj.type) {
-      case "get":
-        conn.sendText(JSON.stringify(clientStatus));
-        break;
-      case "set":
-        clientStatus["mood"] = jsonObj.mood;
-        clientStatus["brightness"] = jsonObj.brightness;
-        console.log("Client sent update");
-        break;
-      default:
-        conn.sendText(JSON.stringify(clientStatus));
-        break;
-    }
-  });
-}).listen(80);
 
